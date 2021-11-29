@@ -46,12 +46,6 @@ def prog_run():
     #print(vel_domain.shape)
     print((dx,dy))
 
-
-    
-
-
-
-
     iteration = 1
     while (status == False):
         u_domain = vel_bound_condition(u_domain,bc_u,dim)
@@ -65,6 +59,7 @@ def prog_run():
         v_domain = v_calc(si_domain,v_domain,dx,dim)
         status = converge(om_domain,n_om_domain,criteria)
         iteration += 1
+
 
 def discretize(n_i,m_j):
     return(np.zeros([n_i, m_j], dtype= float))
