@@ -24,6 +24,8 @@ def prog_run():
     bc_u                = [input["u_L"],input["u_R"],input["u_B"],input["u_T"]]
     bc_v                = [input["v_L"],input["v_R"],input["v_B"],input["v_T"]]
     criteria            = input["criteria"]
+    nu                  = input["nu"]
+    dt                  = input["dt"]
     status              = False
 
 
@@ -44,30 +46,25 @@ def prog_run():
     #print(vel_domain.shape)
     print((dx,dy))
 
-    u_domain = vel_bound_condition(u_domain,bc_u,dim)
-    v_domain = vel_bound_condition(v_domain,bc_v,dim)
-    om_domain = om_calc(om_domain,u_domain,v_domain,dx,dy,dim)
-    si_domain = psi_calc(om_domain,si_domain,dx,beta,dim)
-    u_domain = u_calc(si_domain,u_domain,dy,dim)
-    v_domain = v_calc(si_domain,v_domain,dx,dim)
-    print(u_domain)
+
     
 
 
-"""
-    print("U - Velocity:\n",u_domain)
-    print("\nV - Velocity:\n",v_domain)
 
+
+    iteration = 1
     while (status == False):
-        iteration = 1
-        om_calc(om_domain,u_domain,v_domain,dim)
-        psi_calc(om_domain,si_domain,beta)
-        u_calc(si_domain,u_domain,dy)
-        v_calc(si_domain,v_domain,dx)
-        np.copyto(om_old,om_domain)
-        status = converge(om_old,om_domain,criteria)
+        u_domain = vel_bound_condition(u_domain,bc_u,dim)
+        v_domain = vel_bound_condition(v_domain,bc_v,dim)
+        om_domain = om_calc(om_domain,u_domain,v_domain,dx,dy,dim)
+        si_domain = psi_calc(om_domain,si_domain,dx,beta,dim)
+        om_domain = vorticity_bound(om_domain,si_domain,u_domain,v_domain,dx,dy,dim)
+        n_om_domain = vorticity(om_domain,u_domain,v_domain,dx,dy,dt,nu,dim)
+        si_domain = psi_calc(n_om_domain,si_domain,dx,beta,dim)
+        u_domain = u_calc(si_domain,u_domain,dy,dim)
+        v_domain = v_calc(si_domain,v_domain,dx,dim)
+        status = converge(om_domain,n_om_domain,criteria)
         iteration += 1
-"""
 
 def discretize(n_i,m_j):
     return(np.zeros([n_i, m_j], dtype= float))
@@ -93,37 +90,58 @@ def om_calc(omega,u,v,dx,dy,dim):
     return omega
 
 
-def vorticity(om,u,v,dx,dy,nu,dim):
-    
-    return om
+
+def vorticity_bound(omega,psi,u,v,dx,dy,dim):
+    m = dim[1]-1
+    n = dim[0]-1
+    for i in range(n+1):
+        omega[i][0] = 2*(psi[i][0]-psi[i][1])/(dx*dx) - 2*(v[i][0])/(dx)
+        omega[i][m] = 2*(psi[i][m]-psi[i][m-1])/(dx*dx) + 2*(v[i][m])/(dx)
+
+    for j in range(m+1):
+        omega[0][j] = 2*(psi[0][j]-psi[1][j])/(dy*dy) + 2*(u[0][j])/(dy)
+        omega[n][j] = 2*(psi[n][j]-psi[n-1][j])/(dy*dy) - 2*(u[n][j])/(dy)
+
+    return omega
+
+def vorticity(omega,u,v,dx,dy,dt,nu,dim):
+    n_domain = discretize(dim[0],dim[1])
+    for i in range(dim[1]):
+        for j in range(dim[0]):
+            n_domain[i][j] = omega[i][j] - (u[i][j]*(omega[i+1][j]-omega[i-1][j])/(2*dx))\
+                - (v[i][j]*(omega[i][j+1]-omega[i][j-1])/(2*dy))\
+                    + ((nu*dt)*(omega[i+1][j] - 2*omega[i][j] + omega[i-1][j])/(dx*dx))\
+                        + ((nu*dt)*(omega[i][j+1] - 2*omega[i][j] + omega[i][j-1])/(dy*dy))
+        
+    return n_domain
 
 
 #Elliptic equation (Poisson equation)
-def psi_calc(om,si,dx,beta,dim):
+def psi_calc(omega,psi,dx,beta,dim):
     for i in range(1,dim[0]-1):
         for j in range(1,dim[1]-1):
-            si[i][j] = ((si[i][j+1]+si[i][j-1]+\
-                ((beta*beta)*(si[i+1][j]+si[i-1][j]))+\
-                    (om[i][j]*dx*dx))/\
+            psi[i][j] = ((psi[i][j+1]+psi[i][j-1]+\
+                ((beta*beta)*(psi[i+1][j]+psi[i-1][j]))+\
+                    (omega[i][j]*dx*dx))/\
                         (2*(1+beta*beta)))
-    return si
+    return psi
 
-def u_calc(si,u,dy,dim):    
+def u_calc(psi,u,dy,dim):    
     for i in range(1,dim[0]-1):
         for j in range(1,dim[1]-1):
-            u[i][j] = (si[i+1][j]-si[i-1][j])/(2*dy)
+            u[i][j] = (psi[i+1][j]-psi[i-1][j])/(2*dy)
     return u
 
-def v_calc(si,v,dx,dim):    
+def v_calc(psi,v,dx,dim):    
     for i in range(1,dim[0]-1):
         for j in range(1,dim[1]-1):
-            v[i][j] = (si[i][j+1]-si[i][j-1])/(2*dx)
+            v[i][j] = (psi[i][j+1]-psi[i][j-1])/(2*dx)
     return v
 
 
 
-def converge(om_old,om_new,criteria):
-    convergence = np.subtract(om_old,om_new)
+def converge(o_omega,n_omega,criteria):
+    convergence = np.subtract(o_omega,n_omega)
     if (np.amax(convergence,axis = None) <= criteria):
         return True
     else:
