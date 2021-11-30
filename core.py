@@ -18,7 +18,7 @@ logging.basicConfig(filename='ftcs.log', encoding='utf-8', level=logging.DEBUG,\
     format = '%(asctime)s:%(name)s:%(message)s')
 
 def prog_run():
-    with open('./3.AM21D012_input.json','r') as f:
+    with open('./input.json','r') as f:
         input           = json.load(f)
 
     """-----------Imported data----------"""
