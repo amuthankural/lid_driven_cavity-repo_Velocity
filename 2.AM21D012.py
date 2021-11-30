@@ -50,67 +50,81 @@ def prog_run():
     v_domain                = discretize(n_i,m_j)
     logging.debug('Domain arrays created')
     
+    u_domain = vel_bound_condition(u_domain,bc_u,dim)
+    v_domain = vel_bound_condition(v_domain,bc_v,dim)
+    om_domain = om_calc(om_domain,u_domain,v_domain,dx,dy,dim,criteria)
+    si_domain = psi_calc(om_domain,si_domain,dx,beta,dim)
+
 
     iteration = 1
     logging.debug('Stepping into iterations')
-    while (iteration <= 20):
+    while (status == False):
+        logging.debug('-------------------------------------------------------------------------------------------------')
         logging.debug('Iteration step: {}'.format(iteration))
-        u_domain = vel_bound_condition(u_domain,bc_u,dim)
-        v_domain = vel_bound_condition(v_domain,bc_v,dim)
-        om_domain = om_calc(om_domain,u_domain,v_domain,dx,dy,dim)
-        si_domain = psi_calc(om_domain,si_domain,dx,beta,dim)
+        logging.debug('U domain at iteration start: \n{}\n'.format(u_domain))
+        logging.debug('V domain at iteration start: \n{}\n'.format(v_domain))
+        logging.debug('Initial Vorticity domain: \n{}\n'.format(om_domain))
+        logging.debug('Initial StreamFunction domain: \n{}\n'.format(si_domain))
         om_domain = vorticity_bound(om_domain,si_domain,u_domain,v_domain,dx,dy,dim)
+        logging.debug('Vorticity domain after BC application: \n{}\n'.format(om_domain))
         n_om_domain = vorticity(om_domain,u_domain,v_domain,dx,dy,dt,nu,dim)
+        logging.debug('Vorticity domain from transport equation: \n{}\n'.format(n_om_domain))
         si_domain = psi_calc(n_om_domain,si_domain,dx,beta,dim)
+        logging.debug('StreamFunction domain from vorticity: \n{}\n'.format(si_domain))
         u_domain = u_calc(si_domain,u_domain,dy,dim)
+        logging.debug('U velocity domain from streamfunction equation: \n{}\n'.format(u_domain))
         v_domain = v_calc(si_domain,v_domain,dx,dim)
+        logging.debug('V velocity domain from streamfunction equation: \n{}\n'.format(v_domain))
         status = converge(om_domain,n_om_domain,criteria)
+        np.copyto(om_domain,n_om_domain)
         iteration += 1
+
     logging.debug('Iterations completed. Status: {}\n'.format(status))
 
-
-
-def discretize(n_i,m_j):
-    return(np.zeros([n_i, m_j], dtype= float))
+def discretize(n,m):
+    return(np.zeros([n, m], dtype= float))
 
 def vel_bound_condition(domain,bc,dim):
-    for i in range(dim[0]):
+    m = dim[1]
+    n = dim[0]
+    for i in range(n):
         domain[i][0] = bc[0]
-        domain[i][dim[1]-1] = bc[1]
+        domain[i][m-1] = bc[1]
         
-    for j in range(dim[1]):
+    for j in range(m):
         domain[0][j] = bc[2]
-        domain[dim[0]-1][j] = bc[3]
+        domain[n-1][j] = bc[3]
         
     return domain
 
 #Central difference scheme
-def om_calc(omega,u,v,dx,dy,dim):
+def om_calc(omega,u,v,dx,dy,dim,criteria):
     for i in range(1,dim[0]-1):
         for j in range(1,dim[1]-1):
             omega[i][j] = ((v[i][j+1] - 2*v[i][j] + v[i][j-1])/(dx*dx)) - ((u[i+1][j] - 2*u[i][j] + u[i-1][j])/(dy*dy))
-
     return omega
 
 
 
 def vorticity_bound(omega,psi,u,v,dx,dy,dim):
-    m = dim[1]-1
-    n = dim[0]-1
-    for i in range(1,n+1):
-        omega[i][0] = 2*(psi[i][0]-psi[i][1])/(dx*dx) - 2*(v[i][0])/(dx)
-        omega[i][m] = 2*(psi[i][m]-psi[i][m-1])/(dx*dx) + 2*(v[i][m])/(dx)
+    m = dim[1]
+    n = dim[0]
+    for j in range(1,n):
+        omega[j][0] = 2*(psi[j][0]-psi[j][1])/(dx*dx) - 2*(v[j][0])/(dx)
+        omega[j][m-1] = 2*(psi[j][m-1]-psi[j][m-2])/(dx*dx) + 2*(v[j][m-1])/(dx)
 
-    for j in range(1,m+1):
-        omega[0][j] = 2*(psi[0][j]-psi[1][j])/(dy*dy) + 2*(u[0][j])/(dy)
-        omega[n][j] = 2*(psi[n][j]-psi[n-1][j])/(dy*dy) - 2*(u[n][j])/(dy)
+    for i in range(1,m):
+        omega[0][i] = 2*(psi[0][i]-psi[1][i])/(dy*dy) + 2*(u[0][i])/(dy)
+        omega[n-1][i] = 2*(psi[n-1][i]-psi[n-2][i])/(dy*dy) - 2*(u[n-1][i])/(dy)
 
     return omega
 
 def vorticity(omega,u,v,dx,dy,dt,nu,dim):
     n_domain = discretize(dim[0],dim[1])
-    for i in range(1,dim[1]-1):
-        for j in range(1,dim[0]-1):
+    m = dim[1]
+    n = dim[0]
+    for i in range(1,m-1):
+        for j in range(1,n-1):
             n_domain[i][j] = omega[i][j] - (u[i][j]*(omega[i+1][j]-omega[i-1][j])/(2*dx))\
                 - (v[i][j]*(omega[i][j+1]-omega[i][j-1])/(2*dy))\
                     + ((nu*dt)*(omega[i+1][j] - 2*omega[i][j] + omega[i-1][j])/(dx*dx))\
