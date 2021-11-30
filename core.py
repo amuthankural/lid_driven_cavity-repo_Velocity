@@ -2,22 +2,30 @@ import sys
 import logging
 import json
 import numpy as np
+from pathlib import Path
 
 
 import velocity
 import vorticity
 import streamfunc
 import converge
+import plotter
 
 
 np.set_printoptions(precision=2)
 np.set_printoptions(threshold=sys.maxsize)
 
+data = Path('./output/data').expanduser()
+data.mkdir(parents=True, exist_ok=True)
+
+img = Path('./output/img').expanduser()
+img.mkdir(parents=True, exist_ok=True)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
-file_handler = logging.FileHandler('ftcs.log')
+file_handler = logging.FileHandler('./output/ftcs.log')
 file_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
@@ -73,20 +81,54 @@ def prog_run():
 
 
     u_domain =velocity.boundary(u_domain,bc_u,m_i,n_j)
-    logger.info('U Velocity domain:\n{}'.format(u_domain))
+    logger.debug('U Velocity domain:\n{}'.format(u_domain))
     v_domain = velocity.boundary(v_domain,bc_v,m_i,n_j)
-    logger.info('V Velocity domain:\n{}'.format(v_domain))
-    while iteration <= 5:
+    logger.debug('V Velocity domain:\n{}'.format(v_domain))
+
+    logger.info('Entering iteration state:')
+    while status == False:
+        logger.debug('Vorticity domain from previous iteration:\n{}'.format(o_om_domain))
+        logger.debug('Stream Function domain from previous iteration:\n{}'.format(o_psi_domain))
+
         n_om_domain = vorticity.transposrt(n_om_domain,o_om_domain,o_psi_domain,dx,dy,dt,m_i,n_j,nu)
-        logger.info('Vorticity domain from transport equation:\n{}'.format(n_om_domain))
-        n_om_domain = vorticity.boundary(n_om_domain,o_psi_domain,u_domain,v_domain,dx,dy,m_i,n_j)
-        logger.info('Vorticity domain Boundary condition:\n{}'.format(n_om_domain))
+        logger.debug('Vorticity domain from transport equation:\n{}'.format(n_om_domain))
+
+        n_om_domain=vorticity.boundary(n_om_domain,o_psi_domain,u_domain,v_domain,dx,dy,m_i,n_j)
+        logger.debug('Vorticity domain after Boundary condition applied:\n{}'.format(n_om_domain))
+
         n_psi_domain = streamfunc.poisson(n_om_domain,o_psi_domain,dx,m_i,n_j)
-        logger.info('Stream function from poisson equation:\n{}'.format(n_psi_domain))
+        logger.debug('Stream function from poisson equation:\n{}'.format(n_psi_domain))
+
         status = converge.check(o_om_domain,n_om_domain,criteria)
         logger.info('Convergence status for iteration number {} is:\n{}'.format(iteration,status))
+        
         iteration += 1
-        logger.info('\n==============================================================================')
+
+        np.copyto(o_om_domain,n_om_domain)
+        np.copyto(o_psi_domain,n_psi_domain)
+    
+    
+    logger.info('Solution converged**********\n---------------------------------------------------------------------')
+
+    u_domain = velocity.u_velocity(n_psi_domain,u_domain,dy,m_i,n_j)
+    logger.debug('U domain after convergence:\n{}'.format(u_domain))
+    v_domain = velocity.v_velocity(n_psi_domain,v_domain,dx,m_i,n_j)
+    logger.debug('V domain after convergence:\n{}'.format(v_domain))
+    logger.info('\n==============================================================================')
+
+    np.save(data/'Vorticity.npy',n_om_domain)
+    np.save(data/'StreamFunction.npy',n_psi_domain)
+    np.save(data/'U_velocity.npy',u_domain)
+    np.save(data/'V_velocity.npy',v_domain)
+    logger.info('Data saved\n---------------------------------------------------------------------')
+
+    plotter.plotter(n_psi_domain,m_i,n_j,"Contour of Stream function_top")
+    plotter.plotter(n_om_domain,m_i,n_j,"Contour of Vorticity_top")
+    plotter.plotter(u_domain,m_i,n_j,"Contour of 'u' Velocity_top")
+    plotter.plotter(v_domain,m_i,n_j,"Contour of 'v' Velocity_top")
+    logger.info('Images saved\n---------------------------------------------------------------------')
+    
+
 
 
 
