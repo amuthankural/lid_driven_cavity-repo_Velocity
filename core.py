@@ -12,7 +12,7 @@ np.set_printoptions(precision=2)
 np.set_printoptions(threshold=sys.maxsize)
 
 def prog_run():
-    with open('./3.AM21D012_input.json','r') as f:
+    with open('./Input.json','r') as f:
         input           = json.load(f)
 
     """-----------Imported data----------"""
